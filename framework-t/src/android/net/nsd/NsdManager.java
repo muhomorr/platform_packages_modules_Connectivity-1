@@ -1178,11 +1178,16 @@ public final class NsdManager {
         // Instead of launching separate threads to handle tasks from the various instances.
         mHandler = new ServiceHandler(ConnectivityThread.getInstanceLooper());
 
-        try {
-            mService = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
-                    ENABLE_PLATFORM_MDNS_BACKEND), context.getPackageName());
-        } catch (RemoteException e) {
-            throw new RuntimeException("Failed to connect to NsdService");
+        if (android.content.pm.SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            // INsdManager#connect() enforces INTERNET permission
+            mService = createStubbedINsdServiceConnector();
+        } else {
+            try {
+                mService = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
+                        ENABLE_PLATFORM_MDNS_BACKEND), context.getPackageName());
+            } catch (RemoteException e) {
+                throw new RuntimeException("Failed to connect to NsdService");
+            }
         }
 
         // Only proactively start the daemon if the target SDK < S AND platform < V, For target
