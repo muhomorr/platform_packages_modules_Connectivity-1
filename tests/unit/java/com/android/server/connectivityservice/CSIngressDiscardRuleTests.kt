@@ -27,15 +27,18 @@ import android.net.NetworkCapabilities.TRANSPORT_VPN
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.NetworkRequest
 import android.net.VpnManager.TYPE_VPN_SERVICE
+import android.net.VpnManager.TYPE_VPN_LEGACY
 import android.net.VpnTransportInfo
 import android.os.Build
 import androidx.test.filters.SmallTest
+import com.android.server.connectivity.ConnectivityFlags
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.RecorderCallback.CallbackEntry.LinkPropertiesChanged
 import com.android.testutils.TestableNetworkCallback
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.InOrder
 import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.never
 import org.mockito.Mockito.timeout
@@ -47,17 +50,20 @@ private const val WIFI_IFNAME = "wlan0"
 private const val TIMEOUT_MS = 1_000L
 private const val LONG_TIMEOUT_MS = 5_000
 
-private fun vpnNc() = NetworkCapabilities.Builder()
-        .addTransportType(TRANSPORT_VPN)
-        .removeCapability(NET_CAPABILITY_NOT_VPN)
-        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
-        .setTransportInfo(
-                VpnTransportInfo(
-                        TYPE_VPN_SERVICE,
-                        "MySession12345",
-                        false /* bypassable */,
-                        false /* longLivedTcpConnectionsExpensive */))
-        .build()
+private fun vpnNc(legacyVpn: Boolean = false) = NetworkCapabilities.Builder().apply {
+    addTransportType(TRANSPORT_VPN)
+    removeCapability(NET_CAPABILITY_NOT_VPN)
+    addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+    val vpnType = if (legacyVpn) { TYPE_VPN_LEGACY } else { TYPE_VPN_SERVICE }
+    setTransportInfo(
+            VpnTransportInfo(
+                    vpnType,
+                    "MySession12345",
+                    false /* bypassable */,
+                    false /* longLivedTcpConnectionsExpensive */
+            )
+    )
+}.build()
 
 private fun wifiNc() = NetworkCapabilities.Builder()
         .addTransportType(TRANSPORT_WIFI)
@@ -92,6 +98,11 @@ class CSIngressDiscardRuleTests : CSTest() {
     private val IPV6_LINK_ADDRESS3 = LinkAddress(IPV6_ADDRESS3, 64)
     private val LOCAL_IPV6_ADDRRESS = InetAddresses.parseNumericAddress("fe80::1234")
     private val LOCAL_IPV6_LINK_ADDRRESS = LinkAddress(LOCAL_IPV6_ADDRRESS, 64)
+
+    fun verifyNoMoreIngressDiscardRuleChange(inorder: InOrder) {
+        inorder.verify(bpfNetMaps, never()).setIngressDiscardRule(any(), any())
+        inorder.verify(bpfNetMaps, never()).removeIngressDiscardRule(any())
+    }
 
     @Test
     fun testVpnIngressDiscardRule_UpdateVpnAddress() {
@@ -145,7 +156,7 @@ class CSIngressDiscardRuleTests : CSTest() {
 
         // IngressDiscardRule is added to the VPN address
         inorder.verify(bpfNetMaps).setIngressDiscardRule(IPV6_ADDRESS, VPN_IFNAME)
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         // The VPN interface name is changed
         val newlp = lp(VPN_IFNAME2, IPV6_LINK_ADDRESS, LOCAL_IPV6_LINK_ADDRRESS)
@@ -154,7 +165,7 @@ class CSIngressDiscardRuleTests : CSTest() {
 
         // IngressDiscardRule is updated with the new interface name
         inorder.verify(bpfNetMaps).setIngressDiscardRule(IPV6_ADDRESS, VPN_IFNAME2)
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         agent.disconnect()
         inorder.verify(bpfNetMaps, timeout(TIMEOUT_MS)).removeIngressDiscardRule(IPV6_ADDRESS)
@@ -203,10 +214,10 @@ class CSIngressDiscardRuleTests : CSTest() {
         // IngressDiscardRule for IPV6_ADDRESS2 is removed but IngressDiscardRule for
         // IPV6_LINK_ADDRESS is not added since Wi-Fi also uses IPV6_LINK_ADDRESS
         inorder.verify(bpfNetMaps).removeIngressDiscardRule(IPV6_ADDRESS2)
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         vpnAgent.disconnect()
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         cm.unregisterNetworkCallback(cb)
     }
@@ -222,7 +233,7 @@ class CSIngressDiscardRuleTests : CSTest() {
 
         // IngressDiscardRule is added to the VPN address
         inorder.verify(bpfNetMaps).setIngressDiscardRule(IPV6_ADDRESS, VPN_IFNAME)
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         val nr = nr(TRANSPORT_WIFI)
         val cb = TestableNetworkCallback()
@@ -244,7 +255,7 @@ class CSIngressDiscardRuleTests : CSTest() {
         // IngressDiscardRule is added to the VPN address since the VPN address is not duplicated
         // with the Wi-Fi address
         inorder.verify(bpfNetMaps).setIngressDiscardRule(IPV6_ADDRESS, VPN_IFNAME)
-        inorder.verifyNoMoreInteractions()
+        verifyNoMoreIngressDiscardRuleChange(inorder)
 
         // The Wi-Fi address is changed back to the same address as the VPN interface
         wifiAgent.sendLinkProperties(wifiLp)
@@ -285,5 +296,35 @@ class CSIngressDiscardRuleTests : CSTest() {
         vpnAgent.unregisterAfterReplacement(LONG_TIMEOUT_MS)
         waitForIdle()
         verify(bpfNetMaps).removeIngressDiscardRule(IPV6_ADDRESS)
+    }
+
+    @Test @FeatureFlags([Flag(ConnectivityFlags.INGRESS_TO_VPN_ADDRESS_FILTERING, false)])
+    fun testVpnIngressDiscardRule_FeatureDisabled() {
+        val nr = nr(TRANSPORT_VPN)
+        val cb = TestableNetworkCallback()
+        cm.registerNetworkCallback(nr, cb)
+        val nc = vpnNc()
+        val lp = lp(VPN_IFNAME, IPV6_LINK_ADDRESS, LOCAL_IPV6_LINK_ADDRRESS)
+        val agent = Agent(nc = nc, lp = lp)
+        agent.connect()
+        cb.expectAvailableCallbacks(agent.network, validated = false)
+
+        // IngressDiscardRule should not be added since feature is disabled
+        verify(bpfNetMaps, never()).setIngressDiscardRule(any(), any())
+    }
+
+    @Test
+    fun testVpnIngressDiscardRule_LegacyVpn() {
+        val nr = nr(TRANSPORT_VPN)
+        val cb = TestableNetworkCallback()
+        cm.registerNetworkCallback(nr, cb)
+        val nc = vpnNc(legacyVpn = true)
+        val lp = lp(VPN_IFNAME, IPV6_LINK_ADDRESS, LOCAL_IPV6_LINK_ADDRRESS)
+        val agent = Agent(nc = nc, lp = lp)
+        agent.connect()
+        cb.expectAvailableCallbacks(agent.network, validated = false)
+
+        // IngressDiscardRule should not be added to Legacy VPN
+        verify(bpfNetMaps, never()).setIngressDiscardRule(any(), any())
     }
 }
