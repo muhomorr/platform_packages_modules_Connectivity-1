@@ -165,6 +165,7 @@ ASSERT_STRING_EQUAL(XT_BPF_DENYLIST_PROG_PATH,  BPF_NETD_PATH "prog_netd_skfilte
 #define CGROUP_UDP6_SENDMSG_PROG_PATH BPF_NETD_PATH "prog_netd_sendmsg6_udp6_sendmsg"
 #define CGROUP_GETSOCKOPT_PROG_PATH BPF_NETD_PATH "prog_netd_getsockopt_prog"
 #define CGROUP_SETSOCKOPT_PROG_PATH BPF_NETD_PATH "prog_netd_setsockopt_prog"
+#define CGROUP_SOCKET_PROG_PATH BPF_NETD_PATH "prog_netd_cgroupsock_inet_create"
 
 #define TC_BPF_INGRESS_ACCOUNT_PROG_NAME "prog_netd_schedact_ingress_account"
 #define TC_BPF_INGRESS_ACCOUNT_PROG_PATH BPF_NETD_PATH TC_BPF_INGRESS_ACCOUNT_PROG_NAME
