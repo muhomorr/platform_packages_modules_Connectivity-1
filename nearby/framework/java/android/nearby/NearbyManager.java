@@ -625,7 +625,7 @@ public class NearbyManager {
             throw e.rethrowFromSystemServer();
         } catch (SecurityException e) {
             GmsCompat.catchOrRethrow(e);
-            throw e;
+            return POWERED_OFF_FINDING_MODE_DISABLED;
         }
     }
 
