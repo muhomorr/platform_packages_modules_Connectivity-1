@@ -50,6 +50,7 @@ import android.annotation.RequiresApi;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
+import android.ext.ConnectivityUtil;
 import android.net.ConnectivityManager;
 import android.net.INetd;
 import android.net.InetAddresses;
@@ -2342,6 +2343,12 @@ public class NsdService extends INsdManager.Stub {
         final int uid = mDeps.getCallingUid();
         if (cb == null) {
             throw new IllegalArgumentException("Unknown client callback from uid=" + uid);
+        }
+        // Unfortunately we have to allow system apps to use this service even when under a lockdown
+        // VPN, otherwise would break things.
+        if (ConnectivityUtil.isRegularAppWithLockdownVpnEnabled(mContext, uid)) {
+            Log.d(TAG, "connect(): caller (uid " + uid + ") is under VPN lockdown, returning null");
+            return null;
         }
         if (DBG) Log.d(TAG, "New client connect. useJavaBackend=" + useJavaBackend);
         final INsdServiceConnector connector = new NsdServiceConnector();
