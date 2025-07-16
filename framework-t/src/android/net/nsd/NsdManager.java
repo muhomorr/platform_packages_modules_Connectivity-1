@@ -1183,8 +1183,13 @@ public final class NsdManager {
             mService = createStubbedINsdServiceConnector();
         } else {
             try {
-                mService = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
+                INsdServiceConnector connector = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
                         ENABLE_PLATFORM_MDNS_BACKEND), context.getPackageName());
+                if (connector == null) {
+                    mService = createStubbedINsdServiceConnector();
+                } else {
+                    mService = connector;
+                }
             } catch (RemoteException e) {
                 throw new RuntimeException("Failed to connect to NsdService");
             }
