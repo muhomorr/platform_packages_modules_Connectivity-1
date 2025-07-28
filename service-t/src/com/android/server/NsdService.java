@@ -2310,14 +2310,14 @@ public class NsdService extends INsdManager.Stub {
     public INsdServiceConnector connect(INsdManagerCallback cb, boolean useJavaBackend) {
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.INTERNET, "NsdService");
         final int uid = mDeps.getCallingUid();
+        if (cb == null) {
+            throw new IllegalArgumentException("Unknown client callback from uid=" + uid);
+        }
         // Unfortunately we have to allow system apps to use this service even when under a lockdown
         // VPN, otherwise would break things.
         if (ConnectivityUtil.isRegularAppWithLockdownVpnEnabled(mContext, uid)) {
+            Log.d(TAG, "connect(): caller (uid " + uid + ") is under VPN lockdown, returning null");
             return null;
-        }
-
-        if (cb == null) {
-            throw new IllegalArgumentException("Unknown client callback from uid=" + uid);
         }
         if (DBG) Log.d(TAG, "New client connect. useJavaBackend=" + useJavaBackend);
         final INsdServiceConnector connector = new NsdServiceConnector();
