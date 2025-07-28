@@ -725,10 +725,16 @@ public final class NsdManager {
                 callback.onResolveServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
             }
             @Override public void startDaemon() {}
-            @Override public void stopResolution(int listenerKey) {}
+            @Override public void stopResolution(int listenerKey) {
+                callback.onStopResolutionFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+            }
             @Override public void registerServiceInfoCallback(int listenerKey,
-                    NsdServiceInfo serviceInfo) {}
-            @Override public void unregisterServiceInfoCallback(int listenerKey) {}
+                    NsdServiceInfo serviceInfo) {
+                callback.onServiceInfoCallbackRegistrationFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+            }
+            @Override public void unregisterServiceInfoCallback(int listenerKey) {
+                callback.onServiceInfoCallbackUnregistered(listenerKey);
+            }
             @Override public void registerOffloadEngine(String ifaceName, IOffloadEngine cb,
                     long offloadCapabilities, long offloadType) {}
             @Override public void unregisterOffloadEngine(IOffloadEngine cb) {}
