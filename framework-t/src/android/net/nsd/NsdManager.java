@@ -1976,6 +1976,9 @@ public final class NsdManager {
             mService.registerService(key, advertisingRequest);
         } catch (RemoteException e) {
             e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            android.app.compat.gms.GmsCompat.catchOrRethrow(e);
+            new NsdCallbackImpl(mHandler).onRegisterServiceFailed(key, FAILURE_PERMISSION_DENIED);
         }
     }
 
